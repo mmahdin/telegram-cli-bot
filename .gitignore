@@ -1,3 +1,9 @@
-session.session
-downloaded_audios/
-config.txt
+backend/config.txt
+backend/*.session*
+backend/panel_storage/
+backend/panel_data.sqlite3*
+backend/tmp_media_downloads/
+backend/downloaded_audios/
+frontend/node_modules/
+frontend/dist/
+backend/__pycache__/
