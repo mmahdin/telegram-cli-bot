@@ -33,6 +33,12 @@ function mergeMessages(current: Message[], incoming: Message[]) {
   return orderOldToNew(Array.from(map.values()));
 }
 
+function dialogSubtitle(dialog: Dialog) {
+  if (dialog.is_group || dialog.chat_type === 'group') return dialog.username ? `گروه · @${dialog.username}` : 'گروه تلگرام';
+  if (dialog.is_bot || dialog.chat_type === 'bot') return dialog.username ? `ربات · @${dialog.username}` : 'ربات تلگرام';
+  return dialog.username ? `@${dialog.username}` : dialog.phone || 'کاربر تلگرام';
+}
+
 export default function ChatWindow({ dialog, onDialogRead }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [initialLoading, setInitialLoading] = useState(false);
@@ -270,7 +276,7 @@ export default function ChatWindow({ dialog, onDialogRead }: Props) {
         <div className="flex-1 min-w-0">
           <p className="text-white font-semibold text-sm">{dialog.name}</p>
           <p className="text-white/40 text-xs">
-            {dialog.username ? `@${dialog.username}` : dialog.phone || 'کاربر تلگرام'}
+            {dialogSubtitle(dialog)}
           </p>
         </div>
         {syncing && <span className="text-white/30 text-xs">سینک...</span>}
@@ -321,6 +327,7 @@ export default function ChatWindow({ dialog, onDialogRead }: Props) {
               onDelete={setDeleteConfirm}
               onReply={setReplyTo}
               replyMessage={msg.reply_to_msg_id ? msgMap.get(msg.reply_to_msg_id) : null}
+              showSender={dialog.is_group || dialog.chat_type === 'group'}
             />
           ))
         )}
@@ -331,7 +338,7 @@ export default function ChatWindow({ dialog, onDialogRead }: Props) {
         <div className="mx-4 mb-2 flex items-center gap-2 bg-blue-600/20 border border-blue-500/30 rounded-xl px-3 py-2">
           <div className="flex-1 min-w-0">
             <p className="text-blue-400 text-xs font-medium mb-0.5">
-              {editingMsg ? '✏️ ویرایش پیام' : `↩️ ریپلای به: ${replyTo?.is_outgoing ? 'شما' : dialog.name}`}
+              {editingMsg ? '✏️ ویرایش پیام' : `↩️ ریپلای به: ${replyTo?.is_outgoing ? 'شما' : (replyTo?.sender_name || dialog.name)}`}
             </p>
             <p className="text-white/60 text-xs truncate">{editingMsg?.text || replyTo?.text || '[media]'}</p>
           </div>

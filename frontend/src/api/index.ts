@@ -21,6 +21,8 @@ export const logout = () => api.post('/auth/logout');
 
 export const getDialogs = (limit = 80) => api.get(`/dialogs?limit=${limit}`);
 export const syncDialogs = (limit = 80) => api.post(`/dialogs/sync?limit=${limit}`);
+export const setDialogImportance = (chatId: number, important: boolean) =>
+  api.patch(`/dialogs/${chatId}/importance`, { important });
 export const syncAvatars = (limit = 12) => api.post(`/avatars/sync?limit=${limit}`);
 
 export const getMessages = (userId: number, limit = 50, offsetId = 0, afterId = 0) =>

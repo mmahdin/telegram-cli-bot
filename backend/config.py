@@ -26,6 +26,24 @@ class Config:
     # When True, opening/reading chats in the panel only clears the local JSON badge.
     # It never sends Telegram read receipts, so the sender should not get a second tick.
     stealth_read: bool = True
+    # When True, the panel avoids Telegram read receipts and live update listeners
+    # as much as possible, so opening chats should not refresh Online / Last seen.
+    stealth_presence: bool = True
+    # Optional stronger stealth mode. When True with stealth_presence, do not
+    # subscribe this session to live Telegram updates. The UI will poll
+    # dialogs/messages instead, but event-handler-based features will be paused.
+    stealth_disable_live_updates: bool = False
+    # Optional active status refresh interval, in seconds. Keep it 0 by default:
+    # account.updateStatus(offline=True) itself can refresh Last seen to "now",
+    # so repeatedly calling it after every read is counterproductive.
+    # Set to a positive value only if you intentionally want periodic offline pings.
+    stealth_offline_refresh_seconds: int = 0
+    # Send outgoing text/media with Telegram's background flag when possible.
+    # This can reduce foreground/online exposure, but Telegram still controls presence.
+    stealth_send_background: bool = True
+    # Stronger but inconvenient mode: disconnect the MTProto session after each outgoing action.
+    # Use this only if Telegram still shows you online for too long after sending.
+    stealth_disconnect_after_send: bool = False
     proxy: Optional[ProxyConfig] = None
     host: str = "0.0.0.0"
     port: int = 8000
@@ -155,6 +173,11 @@ def load_config(path: str | Path | None = None) -> Config:
         database_path=database_path,
         temp_media_dir=temp_media_dir,
         stealth_read=_parse_bool(values.get("stealth_read"), default=True),
+        stealth_presence=_parse_bool(values.get("stealth_presence"), default=True),
+        stealth_disable_live_updates=_parse_bool(values.get("stealth_disable_live_updates"), default=False),
+        stealth_offline_refresh_seconds=max(0, int(values.get("stealth_offline_refresh_seconds", "0"))),
+        stealth_send_background=_parse_bool(values.get("stealth_send_background"), default=True),
+        stealth_disconnect_after_send=_parse_bool(values.get("stealth_disconnect_after_send"), default=False),
         proxy=proxy,
         host=values.get("host", "0.0.0.0"),
         port=int(values.get("port", "8000")),

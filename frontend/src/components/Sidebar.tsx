@@ -8,11 +8,15 @@ interface Props {
   dialogs: Dialog[];
   selectedId: number | null;
   onSelect: (d: Dialog) => void;
+  onToggleImportant: (d: Dialog) => void;
   me: Me | null;
   loading: boolean;
   onRefresh: () => void;
   onLogout: () => void;
 }
+
+type MainFilter = 'all' | 'private' | 'group';
+type ImportanceFilter = 'all' | 'important' | 'other';
 
 function Avatar({ name, src, size = 'md' }: { name: string; src?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-12 h-12 text-base' : 'w-10 h-10 text-sm';
@@ -42,19 +46,77 @@ function Avatar({ name, src, size = 'md' }: { name: string; src?: string | null;
 
 export { Avatar };
 
-export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, onRefresh, onLogout }: Props) {
+function dialogKind(dialog: Dialog) {
+  if (dialog.is_group || dialog.chat_type === 'group') return 'group';
+  if (dialog.is_bot || dialog.chat_type === 'bot') return 'bot';
+  return 'private';
+}
+
+function isGroupDialog(dialog: Dialog) {
+  return dialogKind(dialog) === 'group';
+}
+
+function matchesMainFilter(dialog: Dialog, filter: MainFilter) {
+  if (filter === 'group') return isGroupDialog(dialog);
+  if (filter === 'private') return !isGroupDialog(dialog);
+  return true;
+}
+
+function matchesImportanceFilter(dialog: Dialog, filter: ImportanceFilter) {
+  if (filter === 'important') return Boolean(dialog.is_important);
+  if (filter === 'other') return !Boolean(dialog.is_important);
+  return true;
+}
+
+export default function Sidebar({ dialogs, selectedId, onSelect, onToggleImportant, me, loading, onRefresh, onLogout }: Props) {
   const [search, setSearch] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [mainFilter, setMainFilter] = useState<MainFilter>('all');
+  const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
+
+  const mainCounts = useMemo(() => {
+    const groups = dialogs.filter(isGroupDialog).length;
+    return {
+      all: dialogs.length,
+      private: dialogs.length - groups,
+      group: groups,
+    };
+  }, [dialogs]);
+
+  const scopedDialogs = useMemo(
+    () => dialogs.filter(d => matchesMainFilter(d, mainFilter)),
+    [dialogs, mainFilter],
+  );
+
+  const importanceCounts = useMemo(() => {
+    const important = scopedDialogs.filter(d => Boolean(d.is_important)).length;
+    return {
+      all: scopedDialogs.length,
+      important,
+      other: scopedDialogs.length - important,
+    };
+  }, [scopedDialogs]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return dialogs;
-    const q = search.toLowerCase();
-    return dialogs.filter(d =>
-      d.name.toLowerCase().includes(q) ||
-      d.username.toLowerCase().includes(q) ||
-      d.phone.includes(q)
-    );
-  }, [dialogs, search]);
+    const q = search.trim().toLowerCase();
+    return scopedDialogs
+      .filter(d => {
+        if (mainFilter !== 'all' && !matchesImportanceFilter(d, importanceFilter)) return false;
+        if (!q) return true;
+        return (
+          (d.name || '').toLowerCase().includes(q) ||
+          (d.username || '').toLowerCase().includes(q) ||
+          (d.phone || '').includes(q)
+        );
+      })
+      .sort((a, b) => {
+        if (mainFilter !== 'all' && importanceFilter === 'all') {
+          const importantDiff = Number(Boolean(b.is_important)) - Number(Boolean(a.is_important));
+          if (importantDiff !== 0) return importantDiff;
+        }
+        return 0;
+      });
+  }, [scopedDialogs, search, mainFilter, importanceFilter]);
 
   const formatTime = (iso: string | null) => {
     if (!iso) return '';
@@ -64,6 +126,39 @@ export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, on
       return '';
     }
   };
+
+  const selectMainFilter = (value: MainFilter) => {
+    setMainFilter(value);
+    setImportanceFilter('all');
+  };
+
+  const mainFilterButton = (value: MainFilter, label: string, count: number) => (
+    <button
+      key={value}
+      onClick={() => selectMainFilter(value)}
+      className={`flex-1 rounded-xl px-2 py-1.5 text-xs transition-all ${
+        mainFilter === value
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+          : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
+      }`}
+    >
+      {label} <span className="opacity-70">{count}</span>
+    </button>
+  );
+
+  const importanceFilterButton = (value: ImportanceFilter, label: string, count: number) => (
+    <button
+      key={value}
+      onClick={() => setImportanceFilter(value)}
+      className={`flex-1 rounded-xl px-2 py-1.5 text-xs transition-all ${
+        importanceFilter === value
+          ? 'bg-yellow-500/90 text-white shadow-lg shadow-yellow-900/20'
+          : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
+      }`}
+    >
+      {label} <span className="opacity-70">{count}</span>
+    </button>
+  );
 
   return (
     <div className="flex flex-col h-full bg-[#1a1f2e] border-r border-white/5">
@@ -118,8 +213,8 @@ export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, on
         </div>
       )}
 
-      {/* Search */}
-      <div className="px-3 py-2">
+      {/* Search and filters */}
+      <div className="px-3 py-2 space-y-2">
         <div className="relative">
           <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -138,6 +233,18 @@ export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, on
             >×</button>
           )}
         </div>
+        <div className="flex gap-1.5">
+          {mainFilterButton('all', 'همه', mainCounts.all)}
+          {mainFilterButton('private', 'شخصی', mainCounts.private)}
+          {mainFilterButton('group', 'گروه‌ها', mainCounts.group)}
+        </div>
+        {mainFilter !== 'all' && (
+          <div className="flex gap-1.5">
+            {importanceFilterButton('all', 'همه', importanceCounts.all)}
+            {importanceFilterButton('important', 'مهم', importanceCounts.important)}
+            {importanceFilterButton('other', 'کم‌اهمیت', importanceCounts.other)}
+          </div>
+        )}
       </div>
 
       {/* Dialog list */}
@@ -165,9 +272,9 @@ export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, on
             >
               <div className="relative flex-shrink-0">
                 <Avatar name={dialog.name} src={dialog.avatar} />
-                {dialog.is_bot && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-[8px] font-bold">B</span>
+                {dialog.is_important && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold">★</span>
                   </div>
                 )}
               </div>
@@ -176,10 +283,30 @@ export default function Sidebar({ dialogs, selectedId, onSelect, me, loading, on
                   <span className="text-white text-sm font-medium truncate">{dialog.name}</span>
                   <span className="text-white/30 text-xs flex-shrink-0 mr-1">{formatTime(dialog.last_message_time)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-white/40 text-xs truncate flex-1">
                     {dialog.last_message || 'بدون پیام'}
                   </p>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onToggleImportant(dialog); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onToggleImportant(dialog);
+                      }
+                    }}
+                    className={`flex-shrink-0 mr-1 px-1.5 py-0.5 rounded-md text-xs transition-all ${
+                      dialog.is_important
+                        ? 'bg-yellow-400/20 text-yellow-300 hover:bg-yellow-400/30'
+                        : 'bg-white/5 text-white/30 hover:bg-white/10 hover:text-white/60'
+                    }`}
+                    title={dialog.is_important ? 'حذف از مهم‌ها' : 'افزودن به مهم‌ها'}
+                  >
+                    ★
+                  </span>
                   {dialog.unread_count > 0 && (
                     <span className="flex-shrink-0 mr-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                       {dialog.unread_count > 99 ? '99+' : dialog.unread_count}

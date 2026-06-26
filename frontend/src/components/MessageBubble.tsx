@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { MouseEvent, TouchEvent } from 'react';
 import { Message, MediaInfo } from '../types';
 import { absoluteUrl } from '../api';
+import { Avatar } from './Sidebar';
 import { format } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 
@@ -11,6 +12,7 @@ interface Props {
   onDelete: (msg: Message) => void;
   onReply: (msg: Message) => void;
   replyMessage?: Message | null;
+  showSender?: boolean;
 }
 
 function formatBytes(size?: number | null) {
@@ -75,7 +77,7 @@ function MediaRenderer({ media }: { media: MediaInfo }) {
   );
 }
 
-export default function MessageBubble({ message, onEdit, onDelete, onReply, replyMessage }: Props) {
+export default function MessageBubble({ message, onEdit, onDelete, onReply, replyMessage, showSender = false }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
@@ -83,6 +85,8 @@ export default function MessageBubble({ message, onEdit, onDelete, onReply, repl
   const timeStr = message.date
     ? format(new Date(message.date), 'HH:mm', { locale: faIR })
     : '';
+  const senderLabel = message.sender_name || (message.sender_username ? `@${message.sender_username}` : 'عضو گروه');
+  const shouldShowSenderAvatar = showSender && !isOut;
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
@@ -107,10 +111,15 @@ export default function MessageBubble({ message, onEdit, onDelete, onReply, repl
   return (
     <>
       <div
-        className={`flex ${isOut ? 'justify-end' : 'justify-start'} mb-1 group`}
+        className={`flex ${isOut ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1 group`}
         onContextMenu={handleContextMenu}
         {...handleLongPress}
       >
+        {shouldShowSenderAvatar && (
+          <div className="mb-0.5 flex-shrink-0" title={senderLabel}>
+            <Avatar name={senderLabel} src={message.sender_avatar} size="sm" />
+          </div>
+        )}
         <div
           className={`relative max-w-[75%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
             isOut
@@ -118,11 +127,18 @@ export default function MessageBubble({ message, onEdit, onDelete, onReply, repl
               : 'bg-[#2a3142] text-white rounded-bl-sm'
           }`}
         >
+          {/* Sender name for group chats */}
+          {showSender && !isOut && (
+            <p className="text-blue-300 text-[11px] font-semibold mb-1 truncate max-w-[240px]" title={senderLabel}>
+              {senderLabel}
+            </p>
+          )}
+
           {/* Reply */}
           {replyMessage && (
             <div className={`mb-1.5 px-2 py-1 rounded-lg border-r-2 text-xs ${isOut ? 'bg-blue-800/50 border-blue-300' : 'bg-white/10 border-blue-400'}`}>
               <p className="text-blue-300 font-medium mb-0.5">
-                {replyMessage.is_outgoing ? 'شما' : 'پیام'}
+                {replyMessage.is_outgoing ? 'شما' : (replyMessage.sender_name || 'پیام')}
               </p>
               <p className="text-white/70 line-clamp-2">{replyMessage.text || '[media]'}</p>
             </div>

@@ -86,6 +86,10 @@ class SendMessageRequest(BaseModel):
     reply_to: Optional[int] = None
 
 
+class DialogImportanceRequest(BaseModel):
+    important: bool
+
+
 class EditMessageRequest(BaseModel):
     new_text: str = Field(min_length=1)
 
@@ -109,6 +113,11 @@ async def health():
         "telegram_connecting": tg.is_connecting() or auto_connect_pending(),
         "avatar_syncing": avatar_sync_pending(),
         "stealth_read": cfg.stealth_read,
+        "stealth_presence": cfg.stealth_presence,
+        "stealth_disable_live_updates": cfg.stealth_disable_live_updates,
+        "stealth_offline_refresh_seconds": cfg.stealth_offline_refresh_seconds,
+        "stealth_send_background": cfg.stealth_send_background,
+        "stealth_disconnect_after_send": cfg.stealth_disconnect_after_send,
         "last_error": tg.last_error(),
     }
 
@@ -154,6 +163,11 @@ async def auth_status():
         "has_session": tg.has_session_file(),
         "last_error": tg.last_error(),
         "stealth_read": cfg.stealth_read,
+        "stealth_presence": cfg.stealth_presence,
+        "stealth_disable_live_updates": cfg.stealth_disable_live_updates,
+        "stealth_offline_refresh_seconds": cfg.stealth_offline_refresh_seconds,
+        "stealth_send_background": cfg.stealth_send_background,
+        "stealth_disconnect_after_send": cfg.stealth_disconnect_after_send,
         "me": me,
     }
 
@@ -178,6 +192,14 @@ async def sync_dialogs(limit: int = 80):
     require_connection()
     dialogs = await tg.sync_dialogs(limit=limit)
     return {"dialogs": dialogs, "source": "telegram"}
+
+
+@app.patch("/dialogs/{chat_id}/importance")
+async def set_dialog_importance(chat_id: int, request: DialogImportanceRequest):
+    dialog = tg.set_dialog_importance(chat_id=chat_id, important=request.important)
+    if not dialog:
+        raise HTTPException(status_code=404, detail="Dialog not found in local cache")
+    return {"dialog": dialog}
 
 
 @app.get("/messages/{user_id}")
@@ -213,7 +235,12 @@ async def mark_messages_read(user_id: int):
     # Privacy-first default: this clears only the panel JSON badge.
     # It does not send Telegram read acknowledgement, so the sender should not see a second tick.
     await tg.mark_read(user_id, telegram=False)
-    return {"status": "ok", "telegram_ack_sent": False, "stealth_read": cfg.stealth_read}
+    return {
+        "status": "ok",
+        "telegram_ack_sent": False,
+        "stealth_read": cfg.stealth_read,
+        "stealth_presence": cfg.stealth_presence,
+    }
 
 
 @app.post("/messages/{user_id}/telegram-read")

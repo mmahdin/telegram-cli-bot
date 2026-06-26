@@ -6,6 +6,7 @@ import {
   getDialogs,
   syncDialogs,
   syncAvatars,
+  setDialogImportance,
   markDialogRead,
   logout,
 } from './api';
@@ -144,6 +145,18 @@ export default function App() {
     markDialogRead(dialog.id).catch(() => {});
   };
 
+  const handleToggleImportant = async (dialog: Dialog) => {
+    const nextValue = !Boolean(dialog.is_important);
+    setDialogs(prev => prev.map(d => d.id === dialog.id ? { ...d, is_important: nextValue } : d));
+    try {
+      const res = await setDialogImportance(dialog.id, nextValue);
+      const updated = res.data.dialog as Dialog;
+      setDialogs(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d));
+    } catch (e) {
+      setDialogs(prev => prev.map(d => d.id === dialog.id ? { ...d, is_important: dialog.is_important } : d));
+    }
+  };
+
   const handleRefresh = () => {
     fetchCachedDialogs(true).then(() => syncDialogsInBackground());
   };
@@ -180,6 +193,7 @@ export default function App() {
           dialogs={dialogs}
           selectedId={selectedId}
           onSelect={handleSelectDialog}
+          onToggleImportant={handleToggleImportant}
           me={me}
           loading={loadingDialogs || syncInFlight.current}
           onRefresh={handleRefresh}

@@ -44,6 +44,8 @@ class JsonPanelStorage:
 
             avatar = dialog.get("avatar") or old.get("avatar") or self.avatar_url(chat_id)
             unread = dialog.get("unread_count")
+            if unread is None:
+                unread = old.get("unread_count", 0)
             if old.get("locally_read"):
                 old_time = old.get("last_message_time") or ""
                 new_time = dialog.get("last_message_time") or old_time
@@ -52,12 +54,23 @@ class JsonPanelStorage:
                 if not new_time or new_time <= old_time:
                     unread = 0
 
+            chat_type = dialog.get("chat_type") or old.get("chat_type") or ("bot" if dialog.get("is_bot") or old.get("is_bot") else "private")
+            is_bot = bool(dialog.get("is_bot", old.get("is_bot", False)))
+            is_group = bool(dialog.get("is_group", old.get("is_group", False))) or chat_type == "group"
+            if is_group:
+                chat_type = "group"
+
+            is_important = bool(dialog.get("is_important", old.get("is_important", False)))
+
             merged = {
                 "id": chat_id,
                 "name": dialog.get("name") or old.get("name") or "",
                 "username": dialog.get("username") or old.get("username") or "",
                 "phone": dialog.get("phone") or old.get("phone") or "",
-                "is_bot": bool(dialog.get("is_bot", old.get("is_bot", False))),
+                "is_bot": is_bot,
+                "is_group": is_group,
+                "chat_type": chat_type,
+                "is_important": is_important,
                 "last_message": dialog.get("last_message") if dialog.get("last_message") is not None else old.get("last_message", ""),
                 "last_message_time": dialog.get("last_message_time") or old.get("last_message_time"),
                 "unread_count": int(unread or 0),
@@ -83,6 +96,19 @@ class JsonPanelStorage:
         with self._lock:
             row = self._read_dialogs_unlocked().get("dialogs", {}).get(str(int(chat_id)))
         return self._public_dialog(row) if row else None
+
+    def set_dialog_importance(self, chat_id: int, important: bool) -> dict[str, Any] | None:
+        chat_id = int(chat_id)
+        with self._lock:
+            data = self._read_dialogs_unlocked()
+            dialogs = data.setdefault("dialogs", {})
+            row = dialogs.get(str(chat_id))
+            if not row:
+                return None
+            row["is_important"] = bool(important)
+            dialogs[str(chat_id)] = row
+            self._write_json(self.dialogs_path, data)
+        return self.get_dialog(chat_id)
 
     def mark_dialog_read(self, chat_id: int) -> None:
         chat_id = int(chat_id)
@@ -117,6 +143,9 @@ class JsonPanelStorage:
                 old["unread_count"] = int(old.get("unread_count") or 0) + 1
                 old["locally_read"] = False
             old["avatar"] = old.get("avatar") or self.avatar_url(chat_id)
+            if message.get("chat_type") and not old.get("chat_type"):
+                old["chat_type"] = message.get("chat_type")
+                old["is_group"] = message.get("chat_type") == "group"
             dialogs[str(chat_id)] = old
             self._write_json(self.dialogs_path, data)
 
@@ -300,6 +329,10 @@ class JsonPanelStorage:
             "event_type": message.get("event_type") or "new_message",
             "chat_id": int(message.get("chat_id") or message.get("sender_id") or 0),
             "sender_id": message.get("sender_id"),
+            "sender_name": message.get("sender_name"),
+            "sender_username": message.get("sender_username"),
+            "sender_avatar": message.get("sender_avatar"),
+            "chat_type": message.get("chat_type") or "private",
             "is_outgoing": bool(message.get("is_outgoing")),
             "text": message.get("text") or "",
             "date": message.get("date"),
@@ -318,6 +351,9 @@ class JsonPanelStorage:
             "username": row.get("username") or "",
             "phone": row.get("phone") or "",
             "is_bot": bool(row.get("is_bot")),
+            "is_group": bool(row.get("is_group")) or row.get("chat_type") == "group",
+            "chat_type": row.get("chat_type") or ("bot" if row.get("is_bot") else "private"),
+            "is_important": bool(row.get("is_important", False)),
             "last_message": row.get("last_message") or "",
             "last_message_time": row.get("last_message_time"),
             "unread_count": int(row.get("unread_count") or 0),
@@ -328,6 +364,9 @@ class JsonPanelStorage:
         msg = self._sanitize_message(row)
         if isinstance(msg.get("media"), dict):
             msg["media"]["data"] = None
+        sender_id = msg.get("sender_id")
+        if sender_id and not msg.get("sender_avatar"):
+            msg["sender_avatar"] = self.avatar_url(int(sender_id))
         return msg
 
     def _message_preview(self, message: dict[str, Any]) -> str:
